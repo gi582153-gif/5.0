@@ -19,48 +19,55 @@
     <div class="bg-gray-800 text-white p-4 sticky top-0 z-20 flex justify-between items-center no-print">
         <h1 class="font-bold text-xl">老闆中控台</h1>
         <div class="flex items-center">
-            <span id="shop-status-text" class="mr-2 text-sm">營業中</span>
+            <span id="shop-status-text" class="mr-2 text-sm">讀取中...</span>
             <div class="relative inline-block w-12 align-middle select-none">
-                <input type="checkbox" id="shop-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                <input type="checkbox" id="shop-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-gray-300"/>
                 <label for="shop-toggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
             </div>
         </div>
     </div>
 
     <div class="flex justify-around bg-white p-2 mb-4 shadow no-print">
-        <button onclick="showTab('orders')" class="font-bold text-amber-800 border-b-2 border-amber-800 pb-1">接單列印</button>
-        <button onclick="showTab('menu')" class="font-bold text-gray-500 pb-1">菜單管理</button>
+        <button id="btn-orders" onclick="showTab('orders')" class="w-1/2 text-center font-bold text-amber-800 border-b-2 border-amber-800 pb-1 transition-colors">接單列印</button>
+        <button id="btn-menu" onclick="showTab('menu')" class="w-1/2 text-center font-bold text-gray-500 pb-1 transition-colors">菜單管理</button>
     </div>
 
     <div id="tab-orders" class="p-4 space-y-4">
         <div class="bg-blue-100 p-2 rounded text-center text-blue-800 text-sm no-print mb-2">
             🤖 自動重新整理中 (每 5 秒)
         </div>
+        <div id="order-loading" class="text-center text-gray-400 mt-10">正在連線到資料庫...</div>
         <div id="order-list"></div>
     </div>
 
     <div id="tab-menu" class="p-4 hidden">
+        <div id="menu-loading" class="text-center text-gray-500 py-10">讀取菜單中...<br>(如果卡很久，請檢查 CSV 連結)</div>
         <div id="menu-list" class="space-y-2"></div>
     </div>
 
     <div id="print-area"></div>
 
     <script>
-        // 👇 設定
+        // 👇👇👇 這裡一定要填！不然點進去會是白的！ 👇👇👇
         const GAS_URL = "https://script.google.com/macros/s/AKfycby5BAvahPPzmKgiqxipU6f7qY2Eqnlm0pBEgh81n1cBoZxkJ50synq6VfdCh8qAP2tI/exec"; 
-        const MENU_CSV = https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=416538343&single=true&output=csv";
-        const CONF_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=1448724241&single=true&output=csv";
+        const MENU_CSV ="https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=416538343&single=true&output=csv";
+        const CONF_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=1448724241&single=true&output=csv";;
 
         let lastId = '';
 
         function init() {
+            if(MENU_CSV.includes("https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=416538343&single=true&output=csv")) { alert("⚠️ 請記得填入 CSV 連結！"); return; }
+
             // 讀取營業狀態
             Papa.parse(CONF_CSV+"&t="+Date.now(), { download:true, complete: r => {
                 let st = r.data.find(row => row[0]==='status')?.[1] || 'OPEN';
                 updateSwitch(st==='OPEN');
             }});
             // 讀取菜單
-            Papa.parse(MENU_CSV+"&t="+Date.now(), { download:true, header:true, complete: r => renderMenu(r.data) });
+            Papa.parse(MENU_CSV+"&t="+Date.now(), { download:true, header:true, complete: r => {
+                renderMenu(r.data);
+                document.getElementById('menu-loading').classList.add('hidden');
+            }});
 
             // 啟動接單迴圈
             fetchOrders();
@@ -71,17 +78,38 @@
             });
         }
 
+        function showTab(t) {
+            // 切換內容
+            document.getElementById('tab-orders').classList.toggle('hidden', t!=='orders');
+            document.getElementById('tab-menu').classList.toggle('hidden', t!=='menu');
+            
+            // 切換按鈕樣式 (亮燈)
+            const activeClass = "text-amber-800 border-b-2 border-amber-800".split(" ");
+            const inactiveClass = "text-gray-500 border-b-0".split(" ");
+            
+            const btnOrd = document.getElementById('btn-orders');
+            const btnMenu = document.getElementById('btn-menu');
+
+            if(t==='orders') {
+                btnOrd.classList.remove(...inactiveClass); btnOrd.classList.add(...activeClass);
+                btnMenu.classList.remove(...activeClass); btnMenu.classList.add(...inactiveClass);
+            } else {
+                btnMenu.classList.remove(...inactiveClass); btnMenu.classList.add(...activeClass);
+                btnOrd.classList.remove(...activeClass); btnOrd.classList.add(...inactiveClass);
+            }
+        }
+
         function fetchOrders() {
             fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: "get_orders" }) })
             .then(r => r.json())
             .then(res => {
+                document.getElementById('order-loading').classList.add('hidden');
                 let html = '';
-                if(res.orders.length > 0) {
-                    // 自動列印檢查
+                if(res.orders && res.orders.length > 0) {
                     let newest = res.orders[0];
                     if(newest.id !== lastId && lastId !== '') {
                         lastId = newest.id;
-                        printOrder(newest); // 🖨️ 自動列印
+                        printOrder(newest); 
                     } else if(lastId === '') { lastId = newest.id; }
 
                     res.orders.forEach(o => {
@@ -98,7 +126,7 @@
                             </div>
                         </div>`;
                     });
-                } else { html = '<div class="text-center text-gray-400">目前無訂單</div>'; }
+                } else { html = '<div class="text-center text-gray-400 py-10">目前無訂單</div>'; }
                 document.getElementById('order-list').innerHTML = html;
             });
         }
@@ -135,11 +163,6 @@
             document.getElementById('shop-toggle').checked = isOpen;
             document.getElementById('shop-status-text').innerText = isOpen ? "營業中" : "休息中";
             document.querySelector('#shop-toggle + label').style.backgroundColor = isOpen ? '#10B981' : '#D1D5DB';
-        }
-
-        function showTab(t) {
-            document.getElementById('tab-orders').className = t==='orders'?'block p-4':'hidden';
-            document.getElementById('tab-menu').className = t==='menu'?'block p-4':'hidden';
         }
 
         function printOrder(o) {
