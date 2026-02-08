@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>滷香饌點餐</title>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body { font-family: sans-serif; background-color: #f8f5f2; padding-bottom: 100px; -webkit-tap-highlight-color: transparent; }
+        .person-tab.active { border-bottom: 3px solid #b45309; color: #b45309; background: #fff7ed; }
+        .sold-out { opacity: 0.5; pointer-events: none; filter: grayscale(1); }
+    </style>
+</head>
+<body>
+    <div class="sticky top-0 z-20 bg-white shadow">
+        <div class="bg-amber-800 text-white p-3 flex justify-between items-center">
+            <div>
+                <h1 class="font-bold text-lg">滷香饌</h1>
+                <p class="text-xs" id="welcome-msg">載入中...</p>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="showHistory()" class="bg-amber-700 px-2 py-1 rounded text-xs border border-amber-600">📜 歷史紀錄</button>
+                <div id="status-badge" class="bg-green-500 px-2 py-1 rounded text-xs font-bold">營業中</div>
+            </div>
+        </div>
+        <div class="flex overflow-x-auto bg-gray-50 border-b p-1" id="person-tabs"></div>
+        <div class="flex overflow-x-auto bg-white p-2 space-x-4 text-sm font-bold text-gray-500" id="cat-list"></div>
+    </div>
+
+    <div id="menu-area" class="p-3 grid grid-cols-1 gap-3 md:grid-cols-2"></div>
+    <div id="closed-msg" class="hidden text-center mt-20 text-2xl text-gray-400 font-bold">😴 本店休息中</div>
+
+    <div id="bottom-bar" class="fixed bottom-0 w-full bg-white border-t p-3 shadow-lg hidden z-30">
+        <button onclick="openCart()" class="w-full bg-amber-800 text-white py-3 rounded-xl font-bold flex justify-between px-6">
+            <span>查看購物車</span>
+            <span id="total-price">$0</span>
+        </button>
+    </div>
+
+    <div id="cart-modal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-end justify-center">
+        <div class="bg-white w-full max-h-[90vh] rounded-t-2xl flex flex-col">
+            <div class="p-3 border-b flex justify-between font-bold bg-gray-50 rounded-t-2xl">
+                <span>🛒 訂單確認</span>
+                <button onclick="document.getElementById('cart-modal').classList.add('hidden')">✕</button>
+            </div>
+            <div class="overflow-y-auto p-4 flex-1 space-y-4">
+                <div id="cart-items"></div> <div class="bg-amber-50 p-3 rounded space-y-3 border border-amber-100">
+                    <div class="grid grid-cols-2 gap-2">
+                        <select id="type" class="p-2 border rounded" onchange="toggleAddr()">
+                            <option value="自取">🥡 自取</option>
+                            <option value="外送">🛵 外送</option>
+                        </select>
+                        <select id="time" class="p-2 border rounded">
+                            <option value="盡快">🕒 盡快</option>
+                            <option value="15分">15分鐘後</option>
+                            <option value="30分">30分鐘後</option>
+                        </select>
+                    </div>
+                    <input id="u-name" type="text" placeholder="您的稱呼" class="w-full p-2 border rounded bg-white">
+                    <input id="u-phone" type="tel" placeholder="電話 (必填)" class="w-full p-2 border rounded bg-white border-red-300">
+                    <input id="u-addr" type="text" placeholder="外送地址" class="w-full p-2 border rounded hidden bg-white">
+                    <input id="u-note" type="text" placeholder="備註" class="w-full p-2 border rounded bg-white">
+                </div>
+            </div>
+            <div class="p-4 border-t">
+                <button onclick="submitOrder()" id="btn-submit" class="w-full bg-amber-800 text-white py-3 rounded-xl font-bold">送出訂單</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 👇 填入你的設定
+        const LIFF_ID = "2009008890-ktXXza53";
+        const GAS_URL = "https://script.google.com/macros/s/AKfycby5BAvahPPzmKgiqxipU6f7qY2Eqnlm0pBEgh81n1cBoZxkJ50synq6VfdCh8qAP2tI/exec";
+        const MENU_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=0&single=true&output=csv";
+        const CONF_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=1448724241&single=true&output=csv";
+
+        let persons = [{id:1, spicy:'不辣', cond:['酸菜','蔥花'], items:{}}];
+        let currP = 0;
+        let menu = [];
+        let profile = { userId: '', displayName: '' };
+
+        async function init() {
+            await liff.init({ liffId: LIFF_ID });
+            if(!liff.isLoggedIn()) { liff.login(); return; }
+            const p = await liff.getProfile();
+            profile = { userId: p.userId, displayName: p.displayName };
+            document.getElementById('welcome-msg').innerText = `Hi, ${p.displayName}`;
+            document.getElementById('u-name').value = p.displayName; // 自動填名字
+
+            Papa.parse(CONF_CSV+"&t="+Date.now(), { download:true, complete: r => {
+                let status = r.data.find(row => row[0]==='status')?.[1] || 'OPEN';
+                if(status!=='OPEN') {
+                    document.getElementById('status-badge').innerText="休息中";
+                    document.getElementById('status-badge').className="bg-gray-500 px-2 py-1 rounded text-xs font-bold text-white";
+                    document.getElementById('menu-area').classList.add('hidden');
+                    document.getElementById('closed-msg').classList.remove('hidden');
+                } else {
+                    document.getElementById('bottom-bar').classList.remove('hidden');
+                }
+            }});
+
+            Papa.parse(MENU_CSV+"&t="+Date.now(), { download:true, header:true, complete: r => {
+                menu = r.data;
+                renderTabs(); renderMenu(); renderCats();
+            }});
+        }
+
+        // --- 核心功能 ---
+        function renderTabs() {
+            let h = persons.map((p,i) => `<button onclick="currP=${i};renderTabs();renderMenu()" class="person-tab px-4 py-2 whitespace-nowrap ${i===currP?'active':''}">👤 第${i+1}位</button>`).join('');
+            h += `<button onclick="addPerson()" class="px-3 py-2 text-gray-500 font-bold">+ 加一位</button>`;
+            document.getElementById('person-tabs').innerHTML = h;
+        }
+        function addPerson() { persons.push({id:persons.length+1, spicy:'不辣', cond:['酸菜','蔥花'], items:{}}); currP=persons.length-1; renderTabs(); renderMenu(); }
+        
+        function renderMenu(filterCat='全部') {
+            let html = '';
+            let myItems = persons[currP].items;
+            menu.forEach(m => {
+                if(!m.name || (filterCat!=='全部' && m.category!==filterCat)) return;
+                let onSale = (m.on_sale||'TRUE').toUpperCase() === 'TRUE';
+                let qty = myItems[m.name]?.qty || 0;
+                html += `<div class="bg-white p-3 rounded shadow flex justify-between items-center ${onSale?'':'sold-out'}">
+                    <div><div class="font-bold text-lg">${m.name}</div><div class="text-amber-700 font-bold">$${m.price}</div></div>
+                    <div class="flex items-center space-x-2">
+                        ${qty>0 ? `<button onclick="modItem('${m.name}',-1,${m.price})" class="w-8 h-8 bg-amber-100 rounded text-amber-800 font-bold">-</button><span class="font-bold">${qty}</span>` : ''}
+                        <button onclick="modItem('${m.name}',1,${m.price})" class="w-8 h-8 bg-gray-100 rounded text-gray-600 font-bold">+</button>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('menu-area').innerHTML = html;
+            calcTotal();
+        }
+        
+        function modItem(n,d,p) {
+            let cart = persons[currP].items;
+            if(!cart[n]) cart[n] = {qty:0, price:p};
+            cart[n].qty += d;
+            if(cart[n].qty<=0) delete cart[n];
+            renderMenu();
+        }
+
+        function renderCats() {
+            let cats = ['全部', ...new Set(menu.map(m=>m.category).filter(c=>c))];
+            document.getElementById('cat-list').innerHTML = cats.map(c=>`<button onclick="renderMenu('${c}')">${c}</button>`).join('');
+        }
+
+        function calcTotal() {
+            let t = 0;
+            persons.forEach(p => Object.values(p.items).forEach(i => t += i.qty * i.price));
+            document.getElementById('total-price').innerText = `$${t}`;
+        }
+
+        // --- 結帳與送出 ---
+        function openCart() {
+            document.getElementById('cart-modal').classList.remove('hidden');
+            let h = '';
+            persons.forEach((p,i) => {
+                if(Object.keys(p.items).length === 0) return;
+                let itemsStr = Object.entries(p.items).map(([n,v])=>`${n} x${v.qty}`).join('、');
+                h += `<div class="border p-2 rounded mb-2">
+                    <div class="font-bold text-sm mb-1">👤 第${i+1}位 <span class="text-gray-400 font-normal">(${p.spicy})</span></div>
+                    <div class="text-sm text-gray-600">${itemsStr}</div>
+                    <div class="mt-1 flex gap-2 text-xs">
+                        <select onchange="persons[${i}].spicy=this.value" class="border rounded"><option>不辣</option><option>小辣</option><option>中辣</option><option>大辣</option></select>
+                        <label><input type="checkbox" checked onchange="toggleCond(${i},'酸菜',this.checked)"> 酸菜</label>
+                        <label><input type="checkbox" checked onchange="toggleCond(${i},'蔥花',this.checked)"> 蔥花</label>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('cart-items').innerHTML = h || '<div class="text-center text-gray-400">購物車是空的</div>';
+        }
+
+        function toggleCond(pidx, val, check) {
+            let c = persons[pidx].cond;
+            if(check) c.push(val); else persons[pidx].cond = c.filter(x=>x!==val);
+        }
+        function toggleAddr() { document.getElementById('u-addr').classList.toggle('hidden', document.getElementById('type').value!=='外送'); }
+
+        function submitOrder() {
+            let phone = document.getElementById('u-phone').value;
+            if(!phone) { Swal.fire('請填寫電話','老闆找不到你會哭','warning'); return; } // 🚨 強制檢查
+
+            let subOrders = [];
+            let total = 0;
+            persons.forEach(p => {
+                let items = [];
+                Object.entries(p.items).forEach(([n,v]) => { items.push({name:n, qty:v.qty, price:v.price}); total += v.qty*v.price; });
+                if(items.length>0) subOrders.push({ spicy: p.spicy, condiment: p.cond.join(','), items: items });
+            });
+            
+            if(subOrders.length===0) return;
+
+            let data = {
+                action: 'order',
+                orderData: {
+                    customerLineId: profile.userId,
+                    name: document.getElementById('u-name').value,
+                    phone: phone,
+                    type: document.getElementById('type').value,
+                    address: document.getElementById('u-addr').value,
+                    eta: document.getElementById('time').value,
+                    note: document.getElementById('u-note').value,
+                    total: total,
+                    subOrders: subOrders
+                }
+            };
+
+            let btn = document.getElementById('btn-submit');
+            btn.innerText = "傳送中..."; btn.disabled = true;
+
+            fetch(GAS_URL, { method:'POST', mode:'no-cors', body:JSON.stringify(data) })
+            .then(() => {
+                Swal.fire('點餐成功','請查看 LINE 確認訊息','success').then(() => liff.closeWindow());
+            });
+        }
+
+        // --- 歷史紀錄 (新功能) ---
+        function showHistory() {
+            Swal.fire({ title: '讀取紀錄中...', didOpen: () => Swal.showLoading() });
+            fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: "get_history", userId: profile.userId }) })
+            .then(r => r.json())
+            .then(res => {
+                let h = res.history.map(o => `<div class="text-left border-b py-2"><div class="font-bold flex justify-between"><span>${o.id}</span><span>$${o.total}</span></div><div class="text-xs text-gray-500">${o.date}</div><div class="text-sm mt-1 text-gray-600 truncate">${o.items}</div></div>`).join('');
+                Swal.fire({ title: '最近 5 筆訂單', html: h || '沒有紀錄', confirmButtonText: '關閉' });
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
