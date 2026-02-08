@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>老闆總控台</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        .toggle-checkbox:checked { right: 0; border-color: #10B981; }
+        .toggle-checkbox:checked + .toggle-label { background-color: #10B981; }
+        .toggle-checkbox { right: 4px; transition: all 0.3s; }
+        .toggle-label { width: 44px; height: 24px; transition: background-color 0.3s; }
+        @media print { .no-print { display: none; } #print-area { display: block !important; } }
+        #print-area { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100 pb-20">
+    <div class="bg-gray-800 text-white p-4 sticky top-0 z-20 flex justify-between items-center no-print">
+        <h1 class="font-bold text-xl">老闆中控台</h1>
+        <div class="flex items-center">
+            <span id="shop-status-text" class="mr-2 text-sm">營業中</span>
+            <div class="relative inline-block w-12 align-middle select-none">
+                <input type="checkbox" id="shop-toggle" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                <label for="shop-toggle" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex justify-around bg-white p-2 mb-4 shadow no-print">
+        <button onclick="showTab('orders')" class="font-bold text-amber-800 border-b-2 border-amber-800 pb-1">接單列印</button>
+        <button onclick="showTab('menu')" class="font-bold text-gray-500 pb-1">菜單管理</button>
+    </div>
+
+    <div id="tab-orders" class="p-4 space-y-4">
+        <div class="bg-blue-100 p-2 rounded text-center text-blue-800 text-sm no-print mb-2">
+            🤖 自動重新整理中 (每 5 秒)
+        </div>
+        <div id="order-list"></div>
+    </div>
+
+    <div id="tab-menu" class="p-4 hidden">
+        <div id="menu-list" class="space-y-2"></div>
+    </div>
+
+    <div id="print-area"></div>
+
+    <script>
+        // 👇 設定
+        const GAS_URL = "https://script.google.com/macros/s/AKfycby5BAvahPPzmKgiqxipU6f7qY2Eqnlm0pBEgh81n1cBoZxkJ50synq6VfdCh8qAP2tI/exec"; 
+        const MENU_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=0&single=true&output=csv";
+        const CONF_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=1448724241&single=true&output=csv";
+
+        let lastId = '';
+
+        function init() {
+            // 讀取營業狀態
+            Papa.parse(CONF_CSV+"&t="+Date.now(), { download:true, complete: r => {
+                let st = r.data.find(row => row[0]==='status')?.[1] || 'OPEN';
+                updateSwitch(st==='OPEN');
+            }});
+            // 讀取菜單
+            Papa.parse(MENU_CSV+"&t="+Date.now(), { download:true, header:true, complete: r => renderMenu(r.data) });
+
+            // 啟動接單迴圈
+            fetchOrders();
+            setInterval(fetchOrders, 5000);
+
+            document.getElementById('shop-toggle').addEventListener('change', function() {
+                toggleShop(this.checked);
+            });
+        }
+
+        function fetchOrders() {
+            fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: "get_orders" }) })
+            .then(r => r.json())
+            .then(res => {
+                let html = '';
+                if(res.orders.length > 0) {
+                    // 自動列印檢查
+                    let newest = res.orders[0];
+                    if(newest.id !== lastId && lastId !== '') {
+                        lastId = newest.id;
+                        printOrder(newest); // 🖨️ 自動列印
+                    } else if(lastId === '') { lastId = newest.id; }
+
+                    res.orders.forEach(o => {
+                        html += `<div class="bg-white p-4 rounded shadow border-l-4 ${o.type==='外送'?'border-red-500':'border-green-500'}">
+                            <div class="flex justify-between font-bold text-lg"><span>${o.id} (${o.type})</span><span>$${o.total}</span></div>
+                            <div class="text-gray-600">${o.name} / ${o.phone}</div>
+                            <div class="text-sm text-gray-500 mb-2">${o.address || ''}</div>
+                            <div class="border-t pt-2 mt-2 space-y-1 text-sm bg-gray-50 p-2 rounded">
+                                ${formatItems(o.subOrders)}
+                            </div>
+                            <div class="mt-2 flex justify-between items-center">
+                                <span class="text-xs text-gray-400">${o.eta} 取餐</span>
+                                <button onclick='printOrder(${JSON.stringify(o)})' class="bg-gray-800 text-white px-3 py-1 rounded no-print">🖨️ 重印</button>
+                            </div>
+                        </div>`;
+                    });
+                } else { html = '<div class="text-center text-gray-400">目前無訂單</div>'; }
+                document.getElementById('order-list').innerHTML = html;
+            });
+        }
+
+        function formatItems(subs) {
+            if(!subs) return '';
+            return subs.map((s,i) => `<div><span class="font-bold">P${i+1}</span>: ${s.items.map(m=>`${m.name}x${m.qty}`).join(', ')} <span class="text-xs text-gray-400">(${s.spicy}/${s.condiment})</span></div>`).join('');
+        }
+
+        function renderMenu(data) {
+            let html = '';
+            data.forEach(m => {
+                if(!m.name) return;
+                let on = (m.on_sale||'TRUE').toUpperCase() === 'TRUE';
+                html += `<div class="bg-white p-3 rounded shadow flex justify-between items-center">
+                    <span class="font-bold">${m.name}</span>
+                    <div class="relative inline-block w-12 align-middle select-none">
+                        <input type="checkbox" onchange="toggleItem('${m.name}', this.checked)" ${on?'checked':''} class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer border-gray-300"/>
+                        <label class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 ${on?'bg-green-500':''}"></label>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('menu-list').innerHTML = html;
+        }
+
+        function toggleItem(n, s) {
+            fetch(GAS_URL, { method:'POST', mode:'no-cors', body:JSON.stringify({action:'update_status', type:'item', itemName:n, status:s}) });
+        }
+        function toggleShop(s) {
+            updateSwitch(s);
+            fetch(GAS_URL, { method:'POST', mode:'no-cors', body:JSON.stringify({action:'update_status', type:'shop_status', status:s}) });
+        }
+        function updateSwitch(isOpen) {
+            document.getElementById('shop-toggle').checked = isOpen;
+            document.getElementById('shop-status-text').innerText = isOpen ? "營業中" : "休息中";
+            document.querySelector('#shop-toggle + label').style.backgroundColor = isOpen ? '#10B981' : '#D1D5DB';
+        }
+
+        function showTab(t) {
+            document.getElementById('tab-orders').className = t==='orders'?'block p-4':'hidden';
+            document.getElementById('tab-menu').className = t==='menu'?'block p-4':'hidden';
+        }
+
+        function printOrder(o) {
+            let h = `<div style="text-align:center; font-family:monospace;">
+                <h2 style="font-size:24px; margin:0;">滷香饌</h2>
+                <h3 style="font-size:20px; border:2px solid #000; display:inline-block; margin:5px 0;">${o.id.replace('#','')}</h3>
+                <div>${o.type} / ${o.eta} 取餐</div>
+                <hr>
+                <div style="text-align:left; font-size:14px;">${o.name}<br>${o.phone}</div>
+                ${o.address ? `<div>📍 ${o.address}</div>` : ''}
+                <hr>
+                <div style="text-align:left;">
+                    ${formatItems(o.subOrders).replace(/<div/g, '<div style="margin-bottom:5px;"')}
+                </div>
+                <hr>
+                <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:bold;">
+                    <span>總計</span><span>$${o.total}</span>
+                </div>
+                <div style="margin-top:10px; font-size:12px;">備註: ${o.note||'無'}</div>
+                <div style="margin-top:20px; font-size:10px;">${new Date().toLocaleString()}</div>
+            </div>`;
+            document.getElementById('print-area').innerHTML = h;
+            setTimeout(() => window.print(), 500);
+        }
+
+        init();
+    </script>
+</body>
+</html>
