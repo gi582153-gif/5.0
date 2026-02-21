@@ -115,7 +115,7 @@
             h += `<button onclick="addPerson()" class="px-3 py-2 text-gray-500 font-bold">+ 加一位</button>`;
             document.getElementById('person-tabs').innerHTML = h;
         }
-        function addPerson() { persons.push({id:persons.length+1, spicy:'不辣', cond:['酸菜','蔥花'], items:{}}); currP=persons.length-1; renderTabs(); renderMenu(); }
+        function addPerson() { persons.push({id:persons.length+1, spicy:'不辣', cond:['酸菜','蔥花','蒜頭'], items:{}}); currP=persons.length-1; renderTabs(); renderMenu(); }
         
         function renderMenu(filterCat='全部') {
             let html = '';
@@ -183,7 +183,7 @@
 
         function submitOrder() {
             let phone = document.getElementById('u-phone').value;
-            if(!phone) { Swal.fire('請填寫電話','老闆找不到你會哭','warning'); return; } // 🚨 強制檢查
+            if(!phone) { Swal.fire('請填寫電話','warning'); return; } // 🚨 強制檢查
 
             let subOrders = [];
             let total = 0;
