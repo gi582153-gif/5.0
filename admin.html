@@ -159,9 +159,14 @@
         function toggleItem(n, s) {
             fetch(GAS_URL, { method:'POST', mode:'no-cors', body:JSON.stringify({action:'update_status', type:'item', itemName:n, status:s}) });
         }
-        function toggleShop(s) {
+       function toggleShop(s) {
             updateSwitch(s);
-            fetch(GAS_URL, { method:'POST', mode:'no-cors', body:JSON.stringify({action:'update_status', type:'shop_status', status:s}) });
+            // 退回跟「客人送出訂單」完全一樣的發送格式，保證不被瀏覽器擋下！
+            fetch(GAS_URL, { 
+                method: 'POST', 
+                mode: 'no-cors', 
+                body: JSON.stringify({action:'update_status', type:'shop_status', status:s}) 
+            }).catch(e => console.log("發送狀態:", e));
         }
         function updateSwitch(isOpen) {
             document.getElementById('shop-toggle').checked = isOpen;
