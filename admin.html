@@ -60,9 +60,13 @@
 
             // 讀取營業狀態
             Papa.parse(CONF_CSV+"&t="+Date.now(), { download:true, complete: r => {
-                let st = r.data.find(row => row[0]==='status')?.[1] || 'OPEN';
-                updateSwitch(st==='OPEN');
-            }});
+    // 🔍 加入終極過濾：無視空白、無視大小寫
+    let rowData = r.data.find(row => row[0] && String(row[0]).trim().toLowerCase() === 'status');
+    let st = rowData ? String(rowData[1]).trim().toUpperCase() : 'OPEN';
+    
+    console.log("目前讀取到的狀態是:", st); // 讓你在開發者工具可以看有沒有抓對
+    updateSwitch(st === 'OPEN');
+}});
             // 讀取菜單
             Papa.parse(MENU_CSV+"&t="+Date.now(), { download:true, header:true, complete: r => {
                 renderMenu(r.data);
