@@ -52,13 +52,11 @@
                     <div class="grid grid-cols-2 gap-2">
                         <select id="type" class="p-2 border rounded" onchange="toggleAddr()">
                             <option value="自取">🥡 自取</option>
-                            <option value="外送">🛵 外送</option>
+                            <option value="外送">🛵 外送 (滿$300/限3km)</option>
                         </select>
                         <select id="time" class="p-2 border rounded">
                             <option value="盡快">🕒 盡快</option>
-                            <option value="15分">15分鐘後</option>
-                            <option value="30分">30分鐘後</option>
-                        </select>
+                            </select>
                     </div>
                     <input id="u-name" type="text" placeholder="您的稱呼" class="w-full p-2 border rounded bg-white">
                     <input id="u-phone" type="tel" placeholder="電話 (必填)" class="w-full p-2 border rounded bg-white border-red-300">
@@ -73,13 +71,11 @@
     </div>
 
     <script>
-        // 👇 填入你的設定 (已保留你原本的 ID)
         const LIFF_ID = "2009008890-ktXXza53";
         const GAS_URL = "https://script.google.com/macros/s/AKfycby5BAvahPPzmKgiqxipU6f7qY2Eqnlm0pBEgh81n1cBoZxkJ50synq6VfdCh8qAP2tI/exec"; 
         const MENU_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=416538343&single=true&output=csv";
         const CONF_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=1448724241&single=true&output=csv";
 
-        // 🧄 預設值加上「蒜頭」
         let persons = [{id:1, spicy:'不辣', cond:['酸菜','蔥花','蒜頭'], items:{}}];
         let currP = 0;
         let menu = [];
@@ -94,7 +90,24 @@
             document.getElementById('u-name').value = p.displayName;
 
             Papa.parse(CONF_CSV+"&t="+Date.now(), { download:true, complete: r => {
-                let status = r.data.find(row => row[0]==='status')?.[1] || 'OPEN';
+                let confData = r.data;
+                let status = confData.find(row => row[0]==='status')?.[1] || 'OPEN';
+                
+                // 動態抓取店家設定的時間
+                let timeSelect = document.getElementById('time');
+                let times = [
+                    confData.find(row => row[0]==='time1')?.[1],
+                    confData.find(row => row[0]==='time2')?.[1],
+                    confData.find(row => row[0]==='time3')?.[1]
+                ];
+                times.forEach(t => {
+                    if(t) {
+                        let opt = document.createElement('option');
+                        opt.value = t; opt.innerText = t;
+                        timeSelect.appendChild(opt);
+                    }
+                });
+
                 if(status!=='OPEN') {
                     document.getElementById('status-badge').innerText="休息中";
                     document.getElementById('status-badge').className="bg-gray-500 px-2 py-1 rounded text-xs font-bold text-white";
@@ -117,12 +130,10 @@
             document.getElementById('person-tabs').innerHTML = h;
         }
 
-        // 🧄 新增的人也預設有蒜頭
         function addPerson() { 
             persons.push({id:persons.length+1, spicy:'不辣', cond:['酸菜','蔥花','蒜頭'], items:{}}); 
             currP=persons.length-1; 
-            renderTabs(); 
-            renderMenu(); 
+            renderTabs(); renderMenu(); 
         }
         
         function renderMenu(filterCat='全部') {
@@ -163,34 +174,31 @@
             document.getElementById('total-price').innerText = `$${t}`;
         }
 
-       function openCart() {
-    document.getElementById('cart-modal').classList.remove('hidden');
-    let h = '';
-    persons.forEach((p,i) => {
-        if(Object.keys(p.items).length === 0) return;
-        let itemsStr = Object.entries(p.items).map(([n,v])=>`${n} x${v.qty}`).join('、');
-        h += `<div class="border p-2 rounded mb-2 bg-white">
-            <div class="font-bold text-sm mb-1">👤 第${i+1}位 <span class="text-gray-400 font-normal">(${p.spicy})</span></div>
-            <div class="text-sm text-gray-600 mb-2">${itemsStr}</div>
-            <div class="flex flex-wrap gap-3 text-xs items-center">
-                <select onchange="persons[${i}].spicy=this.value" class="border rounded p-1">
-                    <option ${p.spicy==='不辣'?'selected':''}>不辣</option>
-                    <option ${p.spicy==='小辣'?'selected':''}>小辣</option>
-                    <option ${p.spicy==='中辣'?'selected':''}>中辣</option>
-                    <option ${p.spicy==='大辣'?'selected':''}>大辣</option>
-                </select>
-                <label class="flex items-center"><input type="checkbox" class="mr-1" ${p.cond.includes('酸菜')?'checked':''} onchange="toggleCond(${i},'酸菜',this.checked)"> 酸菜</label>
-                <label class="flex items-center"><input type="checkbox" class="mr-1" ${p.cond.includes('蔥花')?'checked':''} onchange="toggleCond(${i},'蔥花',this.checked)"> 蔥花</label>
-                <label class="flex items-center"><input type="checkbox" class="mr-1" ${p.cond.includes('蒜頭')?'checked':''} onchange="toggleCond(${i},'蒜頭',this.checked)"> 🧄蒜頭</label>
-            </div>
-        </div>`;
-    });
-    document.getElementById('cart-items').innerHTML = h || '<div class="text-center text-gray-400">購物車是空的</div>';
-    
-    // 更新外送選項的文字提示
-    const typeSelect = document.getElementById('type');
-    typeSelect.options[1].text = "🛵 外送 (滿$300/限3km)";
-}
+        function openCart() {
+            document.getElementById('cart-modal').classList.remove('hidden');
+            let h = '';
+            persons.forEach((p,i) => {
+                if(Object.keys(p.items).length === 0) return;
+                let itemsStr = Object.entries(p.items).map(([n,v])=>`${n} x${v.qty}`).join('、');
+                h += `<div class="border p-2 rounded mb-2 bg-white shadow-sm">
+                    <div class="font-bold text-sm mb-1">👤 第${i+1}位 <span class="text-gray-400 font-normal">(${p.spicy})</span></div>
+                    <div class="text-sm text-gray-600 mb-2">${itemsStr}</div>
+                    <div class="flex flex-wrap gap-3 text-xs">
+                        <select onchange="persons[${i}].spicy=this.value" class="border rounded p-1">
+                            <option ${p.spicy==='不辣'?'selected':''}>不辣</option>
+                            <option ${p.spicy==='小辣'?'selected':''}>小辣</option>
+                            <option ${p.spicy==='中辣'?'selected':''}>中辣</option>
+                            <option ${p.spicy==='大辣'?'selected':''}>大辣</option>
+                        </select>
+                        <label><input type="checkbox" ${p.cond.includes('酸菜')?'checked':''} onchange="toggleCond(${i},'酸菜',this.checked)"> 酸菜</label>
+                        <label><input type="checkbox" ${p.cond.includes('蔥花')?'checked':''} onchange="toggleCond(${i},'蔥花',this.checked)"> 蔥花</label>
+                        <label><input type="checkbox" ${p.cond.includes('蒜頭')?'checked':''} onchange="toggleCond(${i},'蒜頭',this.checked)"> 蒜頭</label>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('cart-items').innerHTML = h || '<div class="text-center text-gray-400">購物車是空的</div>';
+        }
+
         function toggleCond(pidx, val, check) {
             if(check) {
                 if(!persons[pidx].cond.includes(val)) persons[pidx].cond.push(val);
@@ -200,61 +208,50 @@
         }
         function toggleAddr() { document.getElementById('u-addr').classList.toggle('hidden', document.getElementById('type').value!=='外送'); }
 
-       function submitOrder() {
-    let phone = document.getElementById('u-phone').value;
-    let type = document.getElementById('type').value;
-    if(!phone) { Swal.fire('請填寫電話','','warning'); return; }
+        function submitOrder() {
+            let phone = document.getElementById('u-phone').value;
+            let type = document.getElementById('type').value;
+            if(!phone) { Swal.fire('請填寫電話','','warning'); return; }
 
-    let subOrders = [];
-    let total = 0;
-    persons.forEach(p => {
-        let items = [];
-        Object.entries(p.items).forEach(([n,v]) => { 
-            items.push({name:n, qty:v.qty, price:v.price}); 
-            total += v.qty*v.price; 
-        });
-        if(items.length>0) subOrders.push({ spicy: p.spicy, condiment: p.cond.join(','), items: items });
-    });
-    
-    if(subOrders.length===0) return;
+            let subOrders = [];
+            let total = 0;
+            persons.forEach(p => {
+                let items = [];
+                Object.entries(p.items).forEach(([n,v]) => { items.push({name:n, qty:v.qty, price:v.price}); total += v.qty*v.price; });
+                if(items.length>0) subOrders.push({ spicy: p.spicy, condiment: p.cond.join(','), items: items });
+            });
+            
+            if(subOrders.length===0) return;
 
-    // 🚨 門檻檢查：外送必須滿 300
-    if(type === '外送' && total < 300) {
-        Swal.fire({
-            title: '金額不足',
-            text: `外送需滿 $300（目前 $${total}），建議改為「自取」或再點一些好料！`,
-            icon: 'error'
-        });
-        return;
-    }
+            // 🛑 外送門檻檢查
+            if(type === '外送' && total < 300) {
+                Swal.fire('金額不足', `外送需滿 $300 (目前 $${total})，請改自取或加點。`, 'error');
+                return;
+            }
 
-    let data = {
-        action: 'order',
-        orderData: {
-            customerLineId: profile.userId,
-            name: document.getElementById('u-name').value,
-            phone: phone,
-            type: type,
-            address: document.getElementById('u-addr').value,
-            eta: document.getElementById('time').value,
-            note: document.getElementById('u-note').value,
-            total: total,
-            subOrders: subOrders
+            let data = {
+                action: 'order',
+                orderData: {
+                    customerLineId: profile.userId,
+                    name: document.getElementById('u-name').value,
+                    phone: phone,
+                    type: type,
+                    address: document.getElementById('u-addr').value,
+                    eta: document.getElementById('time').value,
+                    note: document.getElementById('u-note').value,
+                    total: total,
+                    subOrders: subOrders
+                }
+            };
+
+            let btn = document.getElementById('btn-submit');
+            btn.innerText = "傳送中..."; btn.disabled = true;
+
+            fetch(GAS_URL, { method:'POST', mode:'no-cors', body:JSON.stringify(data) })
+            .then(() => {
+                Swal.fire('點餐成功','請查看 LINE 確認訊息','success').then(() => liff.closeWindow());
+            });
         }
-    };
-
-    let btn = document.getElementById('btn-submit');
-    btn.innerText = "傳送中..."; btn.disabled = true;
-
-    fetch(GAS_URL, { method:'POST', mode:'no-cors', body:JSON.stringify(data) })
-    .then(() => {
-        Swal.fire('點餐成功','請查看 LINE 確認收據','success').then(() => liff.closeWindow());
-    })
-    .catch(err => {
-        Swal.fire('傳送失敗', err.toString(), 'error');
-        btn.innerText = "送出訂單"; btn.disabled = false;
-    });
-}
 
         function showHistory() {
             Swal.fire({ title: '讀取紀錄中...', didOpen: () => Swal.showLoading() });
