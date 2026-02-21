@@ -47,7 +47,8 @@
                 <button onclick="document.getElementById('cart-modal').classList.add('hidden')">✕</button>
             </div>
             <div class="overflow-y-auto p-4 flex-1 space-y-4">
-                <div id="cart-items"></div> <div class="bg-amber-50 p-3 rounded space-y-3 border border-amber-100">
+                <div id="cart-items"></div> 
+                <div class="bg-amber-50 p-3 rounded space-y-3 border border-amber-100">
                     <div class="grid grid-cols-2 gap-2">
                         <select id="type" class="p-2 border rounded" onchange="toggleAddr()">
                             <option value="自取">🥡 自取</option>
@@ -72,12 +73,13 @@
     </div>
 
     <script>
-        // 👇 填入你的設定
+        // 👇 填入你的設定 (已保留你原本的 ID)
         const LIFF_ID = "2009008890-ktXXza53";
         const GAS_URL = "https://script.google.com/macros/s/AKfycby5BAvahPPzmKgiqxipU6f7qY2Eqnlm0pBEgh81n1cBoZxkJ50synq6VfdCh8qAP2tI/exec"; 
         const MENU_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=416538343&single=true&output=csv";
         const CONF_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=1448724241&single=true&output=csv";
 
+        // 🧄 預設值加上「蒜頭」
         let persons = [{id:1, spicy:'不辣', cond:['酸菜','蔥花','蒜頭'], items:{}}];
         let currP = 0;
         let menu = [];
@@ -89,7 +91,7 @@
             const p = await liff.getProfile();
             profile = { userId: p.userId, displayName: p.displayName };
             document.getElementById('welcome-msg').innerText = `Hi, ${p.displayName}`;
-            document.getElementById('u-name').value = p.displayName; // 自動填名字
+            document.getElementById('u-name').value = p.displayName;
 
             Papa.parse(CONF_CSV+"&t="+Date.now(), { download:true, complete: r => {
                 let status = r.data.find(row => row[0]==='status')?.[1] || 'OPEN';
@@ -109,13 +111,19 @@
             }});
         }
 
-        // --- 核心功能 ---
         function renderTabs() {
             let h = persons.map((p,i) => `<button onclick="currP=${i};renderTabs();renderMenu()" class="person-tab px-4 py-2 whitespace-nowrap ${i===currP?'active':''}">👤 第${i+1}位</button>`).join('');
             h += `<button onclick="addPerson()" class="px-3 py-2 text-gray-500 font-bold">+ 加一位</button>`;
             document.getElementById('person-tabs').innerHTML = h;
         }
-        function addPerson() { persons.push({id:persons.length+1, spicy:'不辣', cond:['酸菜','蔥花','蒜頭'], items:{}}); currP=persons.length-1; renderTabs(); renderMenu(); }
+
+        // 🧄 新增的人也預設有蒜頭
+        function addPerson() { 
+            persons.push({id:persons.length+1, spicy:'不辣', cond:['酸菜','蔥花','蒜頭'], items:{}}); 
+            currP=persons.length-1; 
+            renderTabs(); 
+            renderMenu(); 
+        }
         
         function renderMenu(filterCat='全部') {
             let html = '';
@@ -155,7 +163,6 @@
             document.getElementById('total-price').innerText = `$${t}`;
         }
 
-        // --- 結帳與送出 ---
         function openCart() {
             document.getElementById('cart-modal').classList.remove('hidden');
             let h = '';
@@ -166,9 +173,15 @@
                     <div class="font-bold text-sm mb-1">👤 第${i+1}位 <span class="text-gray-400 font-normal">(${p.spicy})</span></div>
                     <div class="text-sm text-gray-600">${itemsStr}</div>
                     <div class="mt-1 flex gap-2 text-xs">
-                        <select onchange="persons[${i}].spicy=this.value" class="border rounded"><option>不辣</option><option>小辣</option><option>中辣</option><option>大辣</option></select>
-                        <label><input type="checkbox" checked onchange="toggleCond(${i},'酸菜',this.checked)"> 酸菜</label>
-                        <label><input type="checkbox" checked onchange="toggleCond(${i},'蔥花',this.checked)"> 蔥花</label>
+                        <select onchange="persons[${i}].spicy=this.value" class="border rounded">
+                            <option ${p.spicy==='不辣'?'selected':''}>不辣</option>
+                            <option ${p.spicy==='小辣'?'selected':''}>小辣</option>
+                            <option ${p.spicy==='中辣'?'selected':''}>中辣</option>
+                            <option ${p.spicy==='大辣'?'selected':''}>大辣</option>
+                        </select>
+                        <label><input type="checkbox" ${p.cond.includes('酸菜')?'checked':''} onchange="toggleCond(${i},'酸菜',this.checked)"> 酸菜</label>
+                        <label><input type="checkbox" ${p.cond.includes('蔥花')?'checked':''} onchange="toggleCond(${i},'蔥花',this.checked)"> 蔥花</label>
+                        <label><input type="checkbox" ${p.cond.includes('蒜頭')?'checked':''} onchange="toggleCond(${i},'蒜頭',this.checked)"> 蒜頭</label>
                     </div>
                 </div>`;
             });
@@ -176,14 +189,17 @@
         }
 
         function toggleCond(pidx, val, check) {
-            let c = persons[pidx].cond;
-            if(check) c.push(val); else persons[pidx].cond = c.filter(x=>x!==val);
+            if(check) {
+                if(!persons[pidx].cond.includes(val)) persons[pidx].cond.push(val);
+            } else {
+                persons[pidx].cond = persons[pidx].cond.filter(x=>x!==val);
+            }
         }
         function toggleAddr() { document.getElementById('u-addr').classList.toggle('hidden', document.getElementById('type').value!=='外送'); }
 
         function submitOrder() {
             let phone = document.getElementById('u-phone').value;
-            if(!phone) { Swal.fire('請填寫電話','warning'); return; } // 🚨 強制檢查
+            if(!phone) { Swal.fire('請填寫電話','warning'); return; }
 
             let subOrders = [];
             let total = 0;
@@ -219,7 +235,6 @@
             });
         }
 
-        // --- 歷史紀錄 (新功能) ---
         function showHistory() {
             Swal.fire({ title: '讀取紀錄中...', didOpen: () => Swal.showLoading() });
             fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: "get_history", userId: profile.userId }) })
