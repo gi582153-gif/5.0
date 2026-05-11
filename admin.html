@@ -48,7 +48,7 @@
     <div id="print-area"></div>
 
     <script>
-        // 👇👇👇 這裡一定要填！不然點進去會是白的！ 👇👇👇
+      
         const GAS_URL = "https://script.google.com/macros/s/AKfycby5BAvahPPzmKgiqxipU6f7qY2Eqnlm0pBEgh81n1cBoZxkJ50synq6VfdCh8qAP2tI/exec"; 
         const MENU_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=416538343&single=true&output=csv";
         const CONF_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTOOEeHXjoRPgR8v5zQbHpgY-7HHDQdAIeHsjc2u6HPQsp8piuOPpjajovMh_1GxjYbha82xcSeYFCH/pub?gid=1448724241&single=true&output=csv";
@@ -56,11 +56,11 @@
         let lastId = '';
 
         function init() {
-            if(MENU_CSV.includes("請貼上")) { alert("⚠️ 請記得填入 CSV 連結！"); return; }
+            if(MENU_CSV.includes("請貼上")) { alert("填入 CSV 連結"); return; }
 
             // 讀取營業狀態
             Papa.parse(CONF_CSV+"&t="+Date.now(), { download:true, complete: r => {
-    // 🔍 加入終極過濾：無視空白、無視大小寫
+    // 無視空白、無視大小寫
     let rowData = r.data.find(row => row[0] && String(row[0]).trim().toLowerCase() === 'status');
     let st = rowData ? String(rowData[1]).trim().toUpperCase() : 'OPEN';
     
